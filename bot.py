@@ -47,6 +47,7 @@ def handle_updates(updates):
         elif text.startswith("/"):
             continue
         elif text in items:
+            #TODO here should go some code to open the link to browser
             db.delete_item(text, chat)
             items = db.get_items(chat)
             keyboard = build_keyboard(items)
