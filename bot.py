@@ -7,6 +7,7 @@ from dbhelper import DBHelper
 
 db = DBHelper()
 
+VERSION = '0.0.1'
 URL = "https://api.telegram.org/bot{}/".format('${BOT_TOKEN}')
 
 def get_url(url):
@@ -42,6 +43,8 @@ def handle_updates(updates):
             send_message("Select an item to delete", chat, keyboard)
         elif text == "/start":
             send_message("Welcome to your personal To Do list. Send any text to me and I'll store it as an item. Send /done to remove items", chat)
+        elif text == "/version":
+            send_message("Current bot version " + VERSION, chat)
         elif text.startswith("/"):
             continue
         elif text in items:
