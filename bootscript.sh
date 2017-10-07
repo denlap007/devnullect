@@ -1,6 +1,6 @@
 #!/bin/sh
 echo "Running bootscipt..." &&
 echo "Substituting environment variables..." &&
-envsubst < ./bot.py > ./bot.py &&
+envsubst < ${SRC_DIR}/bot.py > ${SRC_DIR}/bot.py &&
 echo "Starting bot service..." &&
-python ./bot.py
+python ${SRC_DIR}/bot.py
