@@ -1,6 +1,6 @@
 import sqlite3
 
-
+# db crud methods and setup
 class DBHelper:
     def __init__(self, dbname="todo.sqlite"):
         self.dbname = dbname
