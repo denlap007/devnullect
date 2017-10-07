@@ -2,7 +2,7 @@ import sqlite3
 
 # db crud methods and setup
 class DBHelper:
-    def __init__(self, dbname="todo.sqlite"):
+    def __init__(self, dbname='${SQLITE_DB}'):
         self.dbname = dbname
         self.conn = sqlite3.connect(dbname)
 
