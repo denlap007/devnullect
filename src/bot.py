@@ -1,94 +1,104 @@
-import json
-import requests
-import time
-import urllib
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# Simple Bot to reply to Telegram messages
+# This program is dedicated to the public domain under the CC0 license.
+"""
+This Bot uses the Updater class to handle the bot.
+
+First, a few handler functions are defined. Then, those functions are passed to
+the Dispatcher and registered at their respective places.
+Then, the bot is started and runs until we press Ctrl-C on the command line.
+
+Usage:
+Basic Echobot example, repeats messages.
+Press Ctrl-C on the command line or send a signal to the process to stop the
+bot.
+"""
+
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+import logging
 import pdb
-from dbhelper import DBHelper
 
-db = DBHelper()
+# Enable logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    level=logging.INFO)
 
-VERSION = '0.0.1'
-URL = "https://api.telegram.org/bot{}/".format('${BOT_TOKEN}')
+logger = logging.getLogger(__name__)
+items = []
 
-def get_url(url):
-    response = requests.get(url)
-    content = response.content.decode("utf8")
-    return content
 
-def get_json_from_url(url):
-    content = get_url(url)
-    js = json.loads(content)
-    return js
+# Define a few command handlers. These usually take the two arguments bot and
+# update. Error handlers also receive the raised TelegramError object in error.
+def start(bot, update):
+    update.message.reply_text('Hi!')
 
-def get_updates(offset=None):
-    url = URL + "getUpdates?timeout=100"
-    if offset:
-        url += "&offset={}".format(offset)
-    js = get_json_from_url(url)
-    return js
 
-def get_last_update_id(updates):
-    update_ids = []
-    for update in updates["result"]:
-        update_ids.append(int(update["update_id"]))
-    return max(update_ids)
+def help(bot, update):
+    update.message.reply_text('All stuff is pretty straightforward!')
 
-def handle_updates(updates):
-    for update in updates["result"]:
-        text = update["message"]["text"]
-        chat = update["message"]["chat"]["id"]
-        items = db.get_items(chat)
-        if text == "/done":
-            keyboard = build_keyboard(items)
-            send_message("Select an item to delete", chat, keyboard)
-        elif text == "/start":
-            send_message("Welcome to your personal To Do list. Send any text to me and I'll store it as an item. Send /done to remove items", chat)
-        elif text == "/version":
-            send_message("Current bot version " + VERSION, chat)
-        elif text.startswith("/"):
-            continue
-        elif text in items:
-            # first echo the message back and then continue
-            send_message(text, chat)
-            db.delete_item(text, chat)
-            items = db.get_items(chat)
-            keyboard = build_keyboard(items)
-            send_message("Select an item to delete", chat, keyboard)
+
+def echo(bot, update):
+    update.message.reply_text(update.message.text)
+
+
+def error(bot, update, error):
+    logger.warn('Update "%s" caused error "%s"' % (update, error))
+
+def add_item(bot, update):
+    item = update.message.text.split("/add ")[-1]
+    items.append(item)
+
+def delete_item(bot, update):
+    if not items:
+        update.message.reply_text("No other items to return! Please add some")
+    else:
+        item_to_delete = update.message.text.split("/pop ")[-1]
+        if item_to_delete not in items:
+            item_to_do = items.pop()
+            update.message.reply_text(item_to_do)
         else:
-            db.add_item(text, chat)
-            items = db.get_items(chat)
-            message = "\n".join(items)
-            send_message(message, chat)
+            temp_index = items.index(item_to_delete)
+            update.message.reply_text(items.pop(temp_index))
 
-def build_keyboard(items):
-    keyboard = [[item] for item in items]
-    reply_markup = {"keyboard":keyboard, "one_time_keyboard":True}
-    return json.dumps(reply_markup)
+def show_all(bot, update):
+    if not items:
+        update.message.reply_text("No other items to return! Please add some")
+    else:
+        all_items = '\n'.join(items)
+        update.message.reply_text(all_items)
 
-def get_last_chat_id_and_text(updates):
-    num_updates = len(updates["result"])
-    last_update = num_updates - 1
-    text = updates["result"][last_update]["message"]["chat"]
-    chat_id = updates["result"][last_update]["message"]["chat"]["id"]
-    return (text, chat_id)
-
-def send_message(text, chat_id, reply_markup=None):
-    text = urllib.parse.quote_plus(text)
-    url = URL + "sendMessage?text={}&chat_id={}&parse_mode=Markdown".format(text, chat_id)
-    if reply_markup:
-        url += "&reply_markup={}".format(reply_markup)
-    get_url(url)
 
 
 def main():
-    db.setup()
-    last_update_id = None
-    while True:
-        updates = get_updates(last_update_id)
-        if len(updates["result"]) > 0:
-            last_update_id = get_last_update_id(updates) + 1
-            handle_updates(updates)
-        time.sleep(0.5)
+    # Create the EventHandler and pass it your bot's token.
+    TOKEN = "447204684:AAG8quYI85IFn-hsY-iWt2wtsTQCKcD77a8"
+    updater = Updater(TOKEN)
+
+    # Get the dispatcher to register handlers
+    dp = updater.dispatcher
+
+    # on different commands - answer in Telegram
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help))
+    dp.add_handler(CommandHandler("add", add_item))
+    dp.add_handler(CommandHandler("pop", delete_item))
+    dp.add_handler(CommandHandler("show", show_all))
+
+    # on noncommand i.e message - echo the message on Telegram
+    #dp.add_handler(MessageHandler(Filters.text, echo))
+
+    # log all errors
+    dp.add_error_handler(error)
+
+    # Start the Bot
+    updater.start_polling()
+
+    # Run the bot until you press Ctrl-C or the process receives SIGINT,
+    # SIGTERM or SIGABRT. This should be used most of the time, since
+    # start_polling() is non-blocking and will stop the bot gracefully.
+    updater.idle()
+
 
 if __name__ == '__main__':
     main()
