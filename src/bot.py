@@ -18,7 +18,6 @@ bot.
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import logging
-import pdb
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -26,7 +25,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 logger = logging.getLogger(__name__)
 items = []
-
+VERSION = '0.0.2'
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
@@ -68,12 +67,14 @@ def show_all(bot, update):
         all_items = '\n'.join(items)
         update.message.reply_text(all_items)
 
+def version(bot, update):
+    update.message.reply_text('Current bot version ' + VERSION)
+
 
 
 def main():
-    # Create the EventHandler and pass it your bot's token.
-    TOKEN = "447204684:AAG8quYI85IFn-hsY-iWt2wtsTQCKcD77a8"
-    updater = Updater(TOKEN)
+    # Create the EventHandler and pass it the bot's token.
+    updater = Updater('${BOT_TOKEN}')
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
@@ -84,6 +85,7 @@ def main():
     dp.add_handler(CommandHandler("add", add_item))
     dp.add_handler(CommandHandler("pop", delete_item))
     dp.add_handler(CommandHandler("show", show_all))
+    dp.add_handler(CommandHandler("version", version))
 
     # on noncommand i.e message - echo the message on Telegram
     #dp.add_handler(MessageHandler(Filters.text, echo))
