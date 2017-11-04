@@ -1,2 +1,5 @@
 python-telegram-bot
 requests
+validators
+peewee
+PyMySQL
