@@ -426,6 +426,7 @@ def init_db():
             time.sleep(time_interval__in_secs)
         except Exception as e:
             error(str(e))
+            raise
     else:
         raise
 
