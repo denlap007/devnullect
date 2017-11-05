@@ -148,7 +148,7 @@ def show_list(bot, update):
                 cb_dt_pfx = view_ptrn
             else:
                 cb_dt_pfx = entry_del_ptrn
-                reply_msg = 'Delete items from list ' + active_list.title
+                reply_msg = 'Delete items from list: ' + active_list.title
 
             keyboard_buttons = [
                 [InlineKeyboardButton(
@@ -187,6 +187,7 @@ def remove_from_list(bot, update):
 
             # delete resource and associated data
             rs = Resource.get(id=rs_id)
+            rs_title = rs.rs_content
             rsList = ResourceList.get(
                 resource_id=rs_id, list_id=active_list.id)
             rsList.delete_instance()
@@ -209,6 +210,11 @@ def remove_from_list(bot, update):
                 )] for rs in resources
             ]
             markup = InlineKeyboardMarkup(keyboard_buttons)
+
+            bot.answer_callback_query(
+                callback_query_id=update.callback_query.id,
+                text='Deleted ' + rs_title
+            )
             bot.edit_message_reply_markup(
                 chat_id=update.callback_query.message.chat_id,
                 message_id=update.callback_query.message.message_id,
