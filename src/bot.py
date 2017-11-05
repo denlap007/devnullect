@@ -10,12 +10,13 @@ Usage:
 The user can create and manage her to-do lists.
 """
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from peewee import IntegrityError, DoesNotExist
+from peewee import IntegrityError, DoesNotExist, OperationalError
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
 from models import resource, user, theList, resourceList, db
 from datetime import datetime
 import logging
 import validators
+import time
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -36,6 +37,9 @@ entry_del_ptrn = 'e_del'
 view_ptrn = 'view'
 list_del_ptrn = 'l_del'
 list_act_ptrn = 'l_act'
+
+# errors
+generic_error_msg = 'An error occured while processing the request'
 
 
 # Define a few command handlers. These usually take the two arguments bot and
@@ -60,13 +64,20 @@ def error(error):
 
 def add_to_list(bot, update):
     items = update.message.text.split("/add_to_list ")
+    user_id = update.message.from_user.id
 
     if (is_valid_input(items)):
         item = ' '.join(items[1:])
         # start db transaction
         with db.atomic() as trx:
             try:
-                active_list = List.get(List.active == 1)
+                # find active user list if any
+                active_list = (
+                    List
+                    .select()
+                    .where((List.user_id == user_id) & (List.active == 1))
+                    .get()
+                )
                 resource = Resource.create(
                     rs_content=item, rs_date=datetime.utcnow())
                 ResourceList.create(resource_id=resource.id,
@@ -75,15 +86,14 @@ def add_to_list(bot, update):
                 update.message.reply_text('Successfully added to list.')
             except DoesNotExist:
                 db.rollback()
-                update.message.reply_text('No available list to add resource. '
-                    'You need to create a list first')
+                update.message.reply_text('No active or available list. '
+                    'Create a list or set one as active.')
             except Exception as e:
                 db.rollback()
-                update.message.reply_text('An error occured while processing the request')
+                update.message.reply_text(generic_error_msg)
                 error(str(e))
     else:
         update.message.reply_text('You need to enter valid input')
-        updateWarning(update, 'add_to_list invalid input')
 
 
 def version(bot, update):
@@ -91,16 +101,16 @@ def version(bot, update):
 
 
 def create_list(bot, update):
-    createListItems = update.message.text.split("/create_list ")
+    items = update.message.text.split("/create_list ")
+    user_id = update.message.from_user.id
 
-    if (is_valid_input(createListItems)):
-        listTitle = createListItems[1].strip()
-        user_id = update.message.from_user.id
+    if (is_valid_input(items)):
+        listTitle = items[1].strip()
         try:
             active_list = (
                 List
                 .select()
-                .where(List.user_id == user_id & List.active == 1)
+                .where((List.user_id == user_id) & (List.active == 1))
             )
 
             if active_list.exists():
@@ -130,7 +140,7 @@ def show_list(bot, update):
         active_list = (
             List
             .select()
-            .where(List.user_id == user_id & List.active == 1)
+            .where((List.user_id == user_id) & (List.active == 1))
             .get()
         )
 
@@ -144,7 +154,7 @@ def show_list(bot, update):
 
         if len(list(resources)):
             if update.message.text.startswith("/show_list"):
-                reply_msg = 'Displaying items from list ' + active_list.title
+                reply_msg = 'Displaying items from list: ' + active_list.title
                 cb_dt_pfx = view_ptrn
             else:
                 cb_dt_pfx = entry_del_ptrn
@@ -162,7 +172,7 @@ def show_list(bot, update):
         else:
             update.message.reply_text('List is empty.')
     except DoesNotExist:
-        update.message.reply_text('No active list to display. Set the active list')
+        update.message.reply_text('No active list to display. Set an active list')
     except Exception as e:
         update.message.reply_text('An error occured ')
         error(str(e))
@@ -181,7 +191,7 @@ def remove_from_list(bot, update):
             active_list = (
                 List
                 .select()
-                .where(List.user_id == user_id & List.active == 1)
+                .where((List.user_id == user_id) & (List.active == 1))
                 .get()
             )
 
@@ -224,7 +234,7 @@ def remove_from_list(bot, update):
             db.rollback()
             bot.send_message(
                 chat_id=update.callback_query.message.chat_id,
-                text='An error occured while processing the request.'
+                text=generic_error_msg
             )
             error(str(e))
 
@@ -249,13 +259,13 @@ def show_all_lists(bot, update):
 
         if len(list(lists)):
             if update.message.text.startswith("/show_all_lists"):
-                reply_msg = 'Showing all user lists'
+                reply_msg = 'Showing all user lists.'
                 cb_dt_pfx = view_ptrn
             elif update.message.text.startswith("/delete_list"):
-                reply_msg = 'Delete any of the following lists'
+                reply_msg = 'Delete any of the following lists:'
                 cb_dt_pfx = list_del_ptrn
             elif update.message.text.startswith("/set_active_list"):
-                reply_msg = 'Choose list to set as active to perform operations'
+                reply_msg = 'Choose list to set as active to perform operations:'
                 cb_dt_pfx = list_act_ptrn
 
             keyboard_buttons = [
@@ -270,7 +280,7 @@ def show_all_lists(bot, update):
         else:
             update.message.reply_text('No list available.')
     except Exception as e:
-        update.message.reply_text('An error occured while processing the request')
+        update.message.reply_text(generic_error_msg)
         error(str(e))
 
 
@@ -355,7 +365,7 @@ def set_active_list(bot, update):
         # de-activate old activated list
         (List
             .update(active=0)
-            .where(List.user_id == user_id & List.active == 1)
+            .where((List.user_id == user_id) & (List.active == 1))
             .execute())
         # activate new list
 
@@ -368,7 +378,7 @@ def set_active_list(bot, update):
         active_list = (
             List
             .select()
-            .where(List.user_id == user_id & List.active == 1)
+            .where((List.user_id == user_id) & (List.active == 1))
             .get()
         )
         bot.answer_callback_query(
@@ -380,7 +390,7 @@ def set_active_list(bot, update):
         bot.answer_callback_query(
             callback_query_id=update.callback_query.id,
             show_alert=True,
-            text='An error occured while processing the request'
+            text=generic_error_msg
         )
         error(str(e))
 
@@ -390,7 +400,7 @@ def view_active_list(bot, update):
         active_list = (
             List
             .select()
-            .where(List.user_id == user_id & List.active == 1)
+            .where((List.user_id == user_id) & (List.active == 1))
             .get()
         )
 
@@ -398,15 +408,26 @@ def view_active_list(bot, update):
     except DoesNotExist:
         update.message.reply_text('No list available. Add a new list and try again.')
     except Exception as e:
-        update.message.reply_text('An error occured while processing the request')
+        update.message.reply_text(generic_error_msg)
         error(str(e))
 
 
 def init_db():
+    num_of_retries = 30
+    time_interval__in_secs = 1
     # connect to db explicitely, will reveal errors
-    db.connect()
-    # create db tables if they do not exist
-    db.create_tables([User, List, ResourceList, Resource], safe=True)
+    for _ in range(num_of_retries):
+        try:
+            db.connect()
+            # create db tables if they do not exist
+            db.create_tables([User, List, ResourceList, Resource], safe=True)
+            break
+        except OperationalError:
+            time.sleep(time_interval__in_secs)
+        except Exception as e:
+            error(str(e))
+    else:
+        raise
 
 
 def main():
