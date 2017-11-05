@@ -402,9 +402,16 @@ def view_active_list(bot, update):
         error(str(e))
 
 
-def main():
-    # connect to db explicitely, will reveal connection errors
+def init_db():
+    # connect to db explicitely, will reveal errors
     db.connect()
+    # create db tables if they do not exist
+    db.create_tables([User, List, ResourceList, Resource], safe=True)
+
+
+def main():
+    # db initialization
+    init_db()
     # Create the EventHandler and pass it the bot's token.
     updater = Updater('${BOT_TOKEN}')
     # Get the dispatcher to register handlers
