@@ -23,7 +23,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 
 # models assignments
 db = db.DB
@@ -41,19 +41,19 @@ list_del_ptrn = 'l_del'
 list_act_ptrn = 'l_act'
 
 # errors
-generic_error_msg = 'An error occured while processing the request'
+generic_error_msg = '❌ Oh no, an error occured, hang in there tight'
 
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
 def start(bot, update):
-    update.message.reply_text('Welcome to your personal to do list handler.')
+    update.message.reply_text('👶🏼 Hello there, I am going to help you manage your to-do lists')
     user_id = update.message.from_user.id
     User.get_or_create(id=user_id)
 
 
 def help(bot, update):
-    update.message.reply_text('All stuff is pretty straightforward!')
+    update.message.reply_text('👶🏼 All stuff is pretty straightforward!')
 
 
 def echo(bot, update):
@@ -95,11 +95,11 @@ def add_to_list(bot, update):
             ResourceList.create(resource_id=resource.id,
                                 list_id=active_list.id)
 
-            update.message.reply_text('OK, added {}'.format(item))
+            update.message.reply_text('✅ OK, added {}'.format(item))
         except DoesNotExist:
             db.rollback()
-            update.message.reply_text('No active or available list. '
-                'Create a list or set one as active.')
+            update.message.reply_text('❗ No active or available list, '
+                'create a list or set one as active')
         except Exception as e:
             db.rollback()
             update.message.reply_text(generic_error_msg)
@@ -107,7 +107,7 @@ def add_to_list(bot, update):
 
 
 def version(bot, update):
-    update.message.reply_text('Current bot version ' + VERSION)
+    update.message.reply_text('🐚 Current bot version {}'.format(VERSION))
 
 
 def create_list(bot, update):
@@ -138,11 +138,11 @@ def create_list(bot, update):
         else:
             List.create(title=listTitle, user_id=user_id, active=1)
 
-        update.message.reply_text('Created list ' + listTitle)
+        update.message.reply_text('✅ OK, created list {}'.format(listTitle))
     except IntegrityError:
-        update.message.reply_text('List ' + listTitle + ' already exists')
+        update.message.reply_text('❗ Be careful now, list {} already exists'.format(listTitle))
     except Exception as e:
-        update.message.reply_text('An error occured ')
+        update.message.reply_text(generic_error_msg)
         error(str(e))
 
 
@@ -172,11 +172,11 @@ def show_list(bot, update):
 
         if len(list(resources)):
             if update.message.text.startswith("/show_list"):
-                reply_msg = 'Displaying items from list: ' + active_list.title
+                reply_msg = '🗃 Your precious items in {}'.format(active_list.title)
                 cb_dt_pfx = view_ptrn
             else:
                 cb_dt_pfx = entry_del_ptrn
-                reply_msg = 'Delete items from list: ' + active_list.title
+                reply_msg = '🗑 Time for some maintenance in {}'.format(active_list.title)
 
             keyboard_buttons = [
                 [InlineKeyboardButton(
@@ -188,11 +188,11 @@ def show_list(bot, update):
             markup = InlineKeyboardMarkup(keyboard_buttons)
             update.message.reply_text(reply_msg, reply_markup=markup)
         else:
-            update.message.reply_text('List is empty.')
+            update.message.reply_text('😢 This is a sad reality, your is empty')
     except DoesNotExist:
-        update.message.reply_text('No active list to display. Set an active list')
+        update.message.reply_text('❗ No active list, just set one as active')
     except Exception as e:
-        update.message.reply_text('An error occured ')
+        update.message.reply_text(generic_error_msg)
         error(str(e))
 
 
@@ -277,13 +277,13 @@ def show_all_lists(bot, update):
 
         if len(list(lists)):
             if update.message.text.startswith("/show_all_lists"):
-                reply_msg = 'Showing all user lists.'
+                reply_msg = '📚 Check out all your lists'
                 cb_dt_pfx = view_ptrn
             elif update.message.text.startswith("/delete_list"):
-                reply_msg = 'Delete any of the following lists:'
+                reply_msg = '🗑 Throw away lists of the past'
                 cb_dt_pfx = list_del_ptrn
             elif update.message.text.startswith("/set_active_list"):
-                reply_msg = 'Choose list to set as active to perform operations:'
+                reply_msg = '📌 Set one list as active'
                 cb_dt_pfx = list_act_ptrn
 
             keyboard_buttons = [
@@ -296,7 +296,7 @@ def show_all_lists(bot, update):
             markup = InlineKeyboardMarkup(keyboard_buttons)
             update.message.reply_text(reply_msg, reply_markup=markup)
         else:
-            update.message.reply_text('No list available.')
+            update.message.reply_text('❗ Too bad, no lists available. Wait no more and be creative')
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
@@ -368,7 +368,7 @@ def delete_list(bot, update):
             db.rollback()
             bot.send_message(
                 chat_id=update.callback_query.message.chat_id,
-                text='An error occured while processing the request.'
+                text=generic_error_msg
             )
             error(str(e))
 
@@ -402,7 +402,7 @@ def set_active_list(bot, update):
         bot.answer_callback_query(
             callback_query_id=update.callback_query.id,
             show_alert=True,
-            text='Changed currently active list to: {}'.format(active_list.title)
+            text='✅ OK, the active list is {}'.format(active_list.title)
         )
     except Exception as e:
         bot.answer_callback_query(
@@ -422,9 +422,9 @@ def view_active_list(bot, update):
             .get()
         )
 
-        update.message.reply_text('{} list is currently active.'.format(active_list.title))
+        update.message.reply_text('📌 Active list is {}'.format(active_list.title))
     except DoesNotExist:
-        update.message.reply_text('No list available. Add a new list and try again.')
+        update.message.reply_text('❗ What are you doing? Add a list and try again')
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
