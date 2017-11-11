@@ -9,10 +9,10 @@ To do list Bot.
 Usage:
 The user can create and manage her to-do lists.
 """
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 from peewee import IntegrityError, DoesNotExist, OperationalError
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler
-from models import resource, user, theList, resourceList, db
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, BaseFilter
+from models import resource, user, theList, resourceList, group, groupUser, db
 from datetime import datetime
 import logging
 import validators
@@ -23,14 +23,16 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 
 # models assignments
 db = db.DB
 User = user.User
+Group = group.Group
 List = theList.List
 Resource = resource.Resource
 ResourceList = resourceList.ResourceList
+GroupUser = groupUser.GroupUser
 
 # inline keyboard patterns
 entry_del_ptrn = 'e_del'
@@ -68,32 +70,40 @@ def add_to_list(bot, update):
 
     if (is_valid_input(items)):
         item = ' '.join(items[1:])
-        # start db transaction
-        with db.atomic() as trx:
-            try:
-                # find active user list if any
-                active_list = (
-                    List
-                    .select()
-                    .where((List.user_id == user_id) & (List.active == 1))
-                    .get()
-                )
-                resource = Resource.create(
-                    rs_content=item, rs_date=datetime.utcnow())
-                ResourceList.create(resource_id=resource.id,
-                                    list_id=active_list.id)
-
-                update.message.reply_text('Successfully added to list.')
-            except DoesNotExist:
-                db.rollback()
-                update.message.reply_text('No active or available list. '
-                    'Create a list or set one as active.')
-            except Exception as e:
-                db.rollback()
-                update.message.reply_text(generic_error_msg)
-                error(str(e))
+    elif update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
+        item = update.message.text
     else:
-        update.message.reply_text('You need to enter valid input')
+        bot.send_message(
+            chat_id=update.message.chat.id,
+            text="What item?",
+            reply_to_message_id=update.message.message_id,
+            reply_markup=ForceReply(selective=True))
+        return
+
+    # start db transaction
+    with db.atomic() as trx:
+        try:
+            # find active user list if any
+            active_list = (
+                List
+                .select()
+                .where((List.user_id == user_id) & (List.active == 1))
+                .get()
+            )
+            resource = Resource.create(
+                rs_content=item, rs_date=datetime.utcnow())
+            ResourceList.create(resource_id=resource.id,
+                                list_id=active_list.id)
+
+            update.message.reply_text('OK, added {}'.format(item))
+        except DoesNotExist:
+            db.rollback()
+            update.message.reply_text('No active or available list. '
+                'Create a list or set one as active.')
+        except Exception as e:
+            db.rollback()
+            update.message.reply_text(generic_error_msg)
+            error(str(e))
 
 
 def version(bot, update):
@@ -106,26 +116,34 @@ def create_list(bot, update):
 
     if (is_valid_input(items)):
         listTitle = items[1].strip()
-        try:
-            active_list = (
-                List
-                .select()
-                .where((List.user_id == user_id) & (List.active == 1))
-            )
-
-            if active_list.exists():
-                List.create(title=listTitle, user_id=user_id)
-            else:
-                List.create(title=listTitle, user_id=user_id, active=1)
-
-            update.message.reply_text('Created list ' + listTitle)
-        except IntegrityError:
-            update.message.reply_text('List ' + listTitle + ' already exists')
-        except Exception as e:
-            update.message.reply_text('An error occured ')
-            error(str(e))
+    elif update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
+        listTitle = update.message.text
     else:
-        update.message.reply_text('You need to enter a title for the new list')
+        bot.send_message(
+            chat_id=update.message.chat.id,
+            text="List title?",
+            reply_to_message_id=update.message.message_id,
+            reply_markup=ForceReply(selective=True))
+        return
+
+    try:
+        active_list = (
+            List
+            .select()
+            .where((List.user_id == user_id) & (List.active == 1))
+        )
+
+        if active_list.exists():
+            List.create(title=listTitle, user_id=user_id)
+        else:
+            List.create(title=listTitle, user_id=user_id, active=1)
+
+        update.message.reply_text('Created list ' + listTitle)
+    except IntegrityError:
+        update.message.reply_text('List ' + listTitle + ' already exists')
+    except Exception as e:
+        update.message.reply_text('An error occured ')
+        error(str(e))
 
 
 def is_valid_input(input):
@@ -431,6 +449,22 @@ def init_db():
         raise
 
 
+class WhatItemFilter(BaseFilter):
+    def filter(self, message):
+        return (message.reply_to_message and
+                'What item?' in message.reply_to_message.text and
+                message.reply_to_message.from_user.is_bot and
+                message.message_id == message.reply_to_message.message_id + 1)
+
+
+class WhatListFilter(BaseFilter):
+    def filter(self, message):
+        return (message.reply_to_message and
+                'List title?' in message.reply_to_message.text and
+                message.reply_to_message.from_user.is_bot and
+                message.message_id == message.reply_to_message.message_id + 1)
+
+
 def main():
     # db initialization
     init_db()
@@ -459,6 +493,15 @@ def main():
         callback=delete_list, pattern=list_del_ptrn))
     dp.add_handler(CallbackQueryHandler(
         callback=set_active_list, pattern=list_act_ptrn))
+    # instantiate filters
+    filter_what_item = WhatItemFilter()
+    filter_list_title = WhatListFilter()
+    # create message handlers
+    what_item_handler = MessageHandler(filter_what_item, add_to_list)
+    list_item_handler = MessageHandler(filter_list_title, create_list)
+    # Register handlers for reply messages
+    dp.add_handler(what_item_handler)
+    dp.add_handler(list_item_handler)
     # log all errors
     dp.add_error_handler(error)
     # Start the Bot
