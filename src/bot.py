@@ -461,7 +461,7 @@ def main():
     # db initialization
     dbConfig.init_db()
     # Create the EventHandler and pass it the bot's token.
-    updater = Updater('${BOT_TOKEN})
+    updater = Updater('${BOT_TOKEN}')
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
     # on different commands - answer in Telegram
