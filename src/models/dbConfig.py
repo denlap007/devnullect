@@ -5,7 +5,7 @@ from user import User
 from theList import List
 from resourceList import ResourceList
 from resource import Resource
-from db import DB
+from db import DB, DB_NAME
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -42,4 +42,4 @@ def prepareTables():
 
 def prepareMySQLTables():
     # set default tables charset and collation
-    DB.execute_sql("SET NAMES utf8 COLLATE utf8_general_ci;")
+    DB.execute_sql('ALTER DATABASE {} DEFAULT CHARACTER SET utf8 DEFAULT COLLATE utf8_general_ci'.format(DB_NAME))
