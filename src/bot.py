@@ -7,23 +7,22 @@
 To do list Bot.
 
 Usage:
-The user can create and manage her to-do lists.
+The user can manage her to-do lists.
 """
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
-from peewee import IntegrityError, DoesNotExist, OperationalError
+from peewee import IntegrityError, DoesNotExist
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, BaseFilter
-from models import resource, user, theList, resourceList, group, groupUser, db
+from models import resource, user, theList, resourceList, group, groupUser, db, dbConfig
 from datetime import datetime
 import logging
 import validators
-import time
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.1.2'
+VERSION = '0.1.3'
 
 # models assignments
 db = db.DB
@@ -47,7 +46,8 @@ generic_error_msg = '❌ Oh no, an error occured, hang in there tight'
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
 def start(bot, update):
-    update.message.reply_text('👶🏼 Hello there, I am going to help you manage your to-do lists')
+    update.message.reply_text(
+        '👶🏼 Hello there, I am going to help you manage your to-do lists')
     user_id = update.message.from_user.id
     User.get_or_create(id=user_id)
 
@@ -69,9 +69,9 @@ def add_to_list(bot, update):
     user_id = update.message.from_user.id
 
     if (is_valid_input(items)):
-        item = ' '.join(items[1:])
+        item = toUTF8(' '.join(items[1:]))
     elif update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
-        item = update.message.text
+        item = toUTF8(update.message.text)
     else:
         bot.send_message(
             chat_id=update.message.chat.id,
@@ -90,6 +90,7 @@ def add_to_list(bot, update):
                 .where((List.user_id == user_id) & (List.active == 1))
                 .get()
             )
+            # item = item.encode('utf-8') if isinstance(item, unicode) else item
             resource = Resource.create(
                 rs_content=item, rs_date=datetime.utcnow())
             ResourceList.create(resource_id=resource.id,
@@ -99,7 +100,7 @@ def add_to_list(bot, update):
         except DoesNotExist:
             db.rollback()
             update.message.reply_text('❗ No active or available list, '
-                'create a list or set one as active')
+                                      'create a list or set one as active')
         except Exception as e:
             db.rollback()
             update.message.reply_text(generic_error_msg)
@@ -115,9 +116,9 @@ def create_list(bot, update):
     user_id = update.message.from_user.id
 
     if (is_valid_input(items)):
-        listTitle = items[1].strip()
+        listTitle = toUTF8(items[1].strip())
     elif update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
-        listTitle = update.message.text
+        listTitle = toUTF8(update.message.text)
     else:
         bot.send_message(
             chat_id=update.message.chat.id,
@@ -140,7 +141,8 @@ def create_list(bot, update):
 
         update.message.reply_text('✅ OK, created list {}'.format(listTitle))
     except IntegrityError:
-        update.message.reply_text('❗ Be careful now, list {} already exists'.format(listTitle))
+        update.message.reply_text(
+            '❗ Be careful now, list {} already exists'.format(listTitle))
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
@@ -172,11 +174,13 @@ def show_list(bot, update):
 
         if len(list(resources)):
             if update.message.text.startswith("/show_list"):
-                reply_msg = '🗃 Your precious items in {}'.format(active_list.title)
+                reply_msg = '🗃 Your precious items in {}'.format(
+                    toUTF8(active_list.title))
                 cb_dt_pfx = view_ptrn
             else:
                 cb_dt_pfx = entry_del_ptrn
-                reply_msg = '🗑 Time for some maintenance in {}'.format(active_list.title)
+                reply_msg = '🗑 Time for some maintenance in {}'.format(
+                    toUTF8(active_list.title))
 
             keyboard_buttons = [
                 [InlineKeyboardButton(
@@ -188,7 +192,8 @@ def show_list(bot, update):
             markup = InlineKeyboardMarkup(keyboard_buttons)
             update.message.reply_text(reply_msg, reply_markup=markup)
         else:
-            update.message.reply_text('😢 This is a sad reality, your is empty')
+            update.message.reply_text(
+                '😢 This is a sad reality, your list is empty')
     except DoesNotExist:
         update.message.reply_text('❗ No active list, just set one as active')
     except Exception as e:
@@ -296,7 +301,8 @@ def show_all_lists(bot, update):
             markup = InlineKeyboardMarkup(keyboard_buttons)
             update.message.reply_text(reply_msg, reply_markup=markup)
         else:
-            update.message.reply_text('❗ Too bad, no lists available. Wait no more and be creative')
+            update.message.reply_text(
+                '❗ Too bad, no lists available. Wait no more and be creative')
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
@@ -402,7 +408,8 @@ def set_active_list(bot, update):
         bot.answer_callback_query(
             callback_query_id=update.callback_query.id,
             show_alert=True,
-            text='✅ OK, the active list is {}'.format(active_list.title)
+            text='✅ OK, the active list is {}'.format(
+                toUTF8(active_list.title))
         )
     except Exception as e:
         bot.answer_callback_query(
@@ -411,6 +418,7 @@ def set_active_list(bot, update):
             text=generic_error_msg
         )
         error(str(e))
+
 
 def view_active_list(bot, update):
     user_id = update.message.from_user.id
@@ -422,31 +430,14 @@ def view_active_list(bot, update):
             .get()
         )
 
-        update.message.reply_text('📌 Active list is {}'.format(active_list.title))
+        update.message.reply_text(
+            '📌 Active list is {}'.format(toUTF8(active_list.title)))
     except DoesNotExist:
-        update.message.reply_text('❗ What are you doing? Add a list and try again')
+        update.message.reply_text(
+            '❗ What are you doing? Add a list and try again')
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
-
-
-def init_db():
-    num_of_retries = 30
-    time_interval__in_secs = 1
-    # connect to db explicitely, will reveal errors
-    for _ in range(num_of_retries):
-        try:
-            db.connect()
-            # create db tables if they do not exist
-            db.create_tables([User, List, ResourceList, Resource], safe=True)
-            break
-        except OperationalError:
-            time.sleep(time_interval__in_secs)
-        except Exception as e:
-            error(str(e))
-            raise
-    else:
-        raise
 
 
 class WhatItemFilter(BaseFilter):
@@ -465,9 +456,13 @@ class WhatListFilter(BaseFilter):
                 message.message_id == message.reply_to_message.message_id + 1)
 
 
+def toUTF8(input):
+    return input.encode('utf-8') if isinstance(input, unicode) else input
+
+
 def main():
     # db initialization
-    init_db()
+    dbConfig.init_db()
     # Create the EventHandler and pass it the bot's token.
     updater = Updater('${BOT_TOKEN}')
     # Get the dispatcher to register handlers
