@@ -475,15 +475,15 @@ def main():
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("version", version))
-    dp.add_handler(CommandHandler("add_to_list", add_to_list))
-    dp.add_handler(CommandHandler("remove_from_list", show_list))
+    #dp.add_handler(CommandHandler("version", version))
+    dp.add_handler(CommandHandler("add", add_to_list))
+    dp.add_handler(CommandHandler("remove", show_list))
     dp.add_handler(CommandHandler("create_list", create_list))
-    dp.add_handler(CommandHandler("show_list", show_list))
+    #dp.add_handler(CommandHandler("show_list", show_list))
     dp.add_handler(CommandHandler("delete_list", show_all_lists))
-    dp.add_handler(CommandHandler("show_all_lists", show_all_lists))
-    dp.add_handler(CommandHandler("set_active_list", show_all_lists))
-    dp.add_handler(CommandHandler("view_active_list", view_active_list))
+    #dp.add_handler(CommandHandler("show_all_lists", show_all_lists))
+    dp.add_handler(CommandHandler("set_active", show_all_lists))
+    #dp.add_handler(CommandHandler("view_active_list", view_active_list))
     # Register handlers for query callbacks from inline keyboard events
     dp.add_handler(CallbackQueryHandler(
         callback=remove_from_list, pattern=entry_del_ptrn))
