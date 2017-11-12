@@ -15,6 +15,5 @@ where
 * Add group support
 * Update documentation for deployment (old docker method legacy)
 * Update wiki
-* add urls with www or nothing as prefix
-* support more languages
+* add urls with nothing as prefix
 * create profile pic :)

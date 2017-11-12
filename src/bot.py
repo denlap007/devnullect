@@ -15,14 +15,13 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 from models import resource, user, theList, resourceList, group, groupUser, db, dbConfig
 from datetime import datetime
 import logging
-import validators
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.1.3'
+VERSION = '0.1.4'
 
 # models assignments
 db = db.DB
@@ -64,8 +63,8 @@ def error(error):
     logger.error(error)
 
 
-def add_to_list(bot, update):
-    items = update.message.text.split("/add_to_list ")
+def add(bot, update):
+    items = update.message.text.split("/add ")
     user_id = update.message.from_user.id
 
     if (is_valid_input(items)):
@@ -153,7 +152,7 @@ def is_valid_input(input):
     return (len(input) >= 2 and input[1].strip())
 
 
-def show_list(bot, update):
+def show(bot, update):
     user_id = update.message.from_user.id
 
     try:
@@ -173,7 +172,7 @@ def show_list(bot, update):
         )
 
         if len(list(resources)):
-            if update.message.text.startswith("/show_list"):
+            if update.message.text.startswith("/show"):
                 reply_msg = '🗃 Your precious items in {}'.format(
                     toUTF8(active_list.title))
                 cb_dt_pfx = view_ptrn
@@ -185,7 +184,8 @@ def show_list(bot, update):
             keyboard_buttons = [
                 [InlineKeyboardButton(
                     text=rs.rs_content,
-                    url=rs.rs_content if validators.url(rs.rs_content) else '',
+                    url=rs.rs_content if (rs.rs_content.startswith('http') or rs.rs_content.startswith(
+                        'www') or rs.rs_content.startswith('https://')) and cb_dt_pfx == view_ptrn else '',
                     callback_data='{} {}'.format(cb_dt_pfx, rs.id)
                 )] for rs in resources
             ]
@@ -201,7 +201,7 @@ def show_list(bot, update):
         error(str(e))
 
 
-def remove_from_list(bot, update):
+def remove(bot, update):
     # get data attached to callback and extract resourse id and user id
     cb_data = update.callback_query.data
     rs_id = cb_data.split()[1]
@@ -270,7 +270,7 @@ def view_entry_handler(bot, update):
     bot.answer_callback_query(update.callback_query.id)
 
 
-def show_all_lists(bot, update):
+def show_lists(bot, update):
     user_id = update.message.from_user.id
 
     try:
@@ -281,19 +281,22 @@ def show_all_lists(bot, update):
         )
 
         if len(list(lists)):
-            if update.message.text.startswith("/show_all_lists"):
+            if update.message.text.startswith("/show_lists"):
                 reply_msg = '📚 Check out all your lists'
                 cb_dt_pfx = view_ptrn
             elif update.message.text.startswith("/delete_list"):
                 reply_msg = '🗑 Throw away lists of the past'
                 cb_dt_pfx = list_del_ptrn
-            elif update.message.text.startswith("/set_active_list"):
-                reply_msg = '📌 Set one list as active'
+            elif update.message.text.startswith("/activate_list"):
+                reply_msg = '📌 Activate your list of desire'
                 cb_dt_pfx = list_act_ptrn
 
             keyboard_buttons = [
                 [InlineKeyboardButton(
                     text=ls.title,
+                    callback_data='{} {}'.format(cb_dt_pfx, ls.id)
+                )] if ls.active == 0 else [InlineKeyboardButton(
+                    text='✅  {}'.format(toUTF8(ls.title)),
                     callback_data='{} {}'.format(cb_dt_pfx, ls.id)
                 )] for ls in lists
             ]
@@ -302,7 +305,7 @@ def show_all_lists(bot, update):
             update.message.reply_text(reply_msg, reply_markup=markup)
         else:
             update.message.reply_text(
-                '❗ Too bad, no lists available. Wait no more and be creative')
+                '❗ Too bad, no lists available. Wait no more, start being creative')
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
@@ -379,7 +382,7 @@ def delete_list(bot, update):
             error(str(e))
 
 
-def set_active_list(bot, update):
+def activate_list(bot, update):
     # get data attached to callback and extract list id and user id
     cb_data = update.callback_query.data
     list_id = cb_data.split()[1]
@@ -392,51 +395,45 @@ def set_active_list(bot, update):
             .where((List.user_id == user_id) & (List.active == 1))
             .execute())
         # activate new list
-
         (List
             .update(active=1)
             .where(List.id == list_id)
             .execute())
-
-        # retrieve list
-        active_list = (
+        # retrieve lists
+        lists = (
             List
             .select()
-            .where((List.user_id == user_id) & (List.active == 1))
-            .get()
+            .where(List.user_id == user_id)
         )
+
         bot.answer_callback_query(
             callback_query_id=update.callback_query.id,
             show_alert=True,
-            text='✅ OK, the active list is {}'.format(
-                toUTF8(active_list.title))
+            text='✅ OK, activated list {}'.format(
+                toUTF8([ls.title for ls in lists if ls.active == 1][0]))
         )
+        # update reply_markup
+        keyboard_buttons = [
+            [InlineKeyboardButton(
+                text=ls.title,
+                callback_data='{} {}'.format(list_act_ptrn, ls.id)
+            )] if ls.active == 0 else [InlineKeyboardButton(
+                text='✅  {}'.format(toUTF8(ls.title)),
+                callback_data='{} {}'.format(list_act_ptrn, ls.id)
+            )] for ls in lists
+        ]
+
+        markup = InlineKeyboardMarkup(keyboard_buttons)
+        bot.edit_message_reply_markup(
+            chat_id=update.callback_query.message.chat_id,
+            message_id=update.callback_query.message.message_id,
+            reply_markup=markup)
     except Exception as e:
         bot.answer_callback_query(
             callback_query_id=update.callback_query.id,
             show_alert=True,
             text=generic_error_msg
         )
-        error(str(e))
-
-
-def view_active_list(bot, update):
-    user_id = update.message.from_user.id
-    try:
-        active_list = (
-            List
-            .select()
-            .where((List.user_id == user_id) & (List.active == 1))
-            .get()
-        )
-
-        update.message.reply_text(
-            '📌 Active list is {}'.format(toUTF8(active_list.title)))
-    except DoesNotExist:
-        update.message.reply_text(
-            '❗ What are you doing? Add a list and try again')
-    except Exception as e:
-        update.message.reply_text(generic_error_msg)
         error(str(e))
 
 
@@ -464,35 +461,34 @@ def main():
     # db initialization
     dbConfig.init_db()
     # Create the EventHandler and pass it the bot's token.
-    updater = Updater('${BOT_TOKEN}')
+    updater = Updater('${BOT_TOKEN})
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
     # on different commands - answer in Telegram
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("version", version))
-    dp.add_handler(CommandHandler("add_to_list", add_to_list))
-    dp.add_handler(CommandHandler("remove_from_list", show_list))
+    dp.add_handler(CommandHandler("add", add))
+    dp.add_handler(CommandHandler("remove", show))
     dp.add_handler(CommandHandler("create_list", create_list))
-    dp.add_handler(CommandHandler("show_list", show_list))
-    dp.add_handler(CommandHandler("delete_list", show_all_lists))
-    dp.add_handler(CommandHandler("show_all_lists", show_all_lists))
-    dp.add_handler(CommandHandler("set_active_list", show_all_lists))
-    dp.add_handler(CommandHandler("view_active_list", view_active_list))
+    dp.add_handler(CommandHandler("show", show))
+    dp.add_handler(CommandHandler("delete_list", show_lists))
+    dp.add_handler(CommandHandler("show_lists", show_lists))
+    dp.add_handler(CommandHandler("activate_list", show_lists))
     # Register handlers for query callbacks from inline keyboard events
     dp.add_handler(CallbackQueryHandler(
-        callback=remove_from_list, pattern=entry_del_ptrn))
+        callback=remove, pattern=entry_del_ptrn))
     dp.add_handler(CallbackQueryHandler(
         callback=view_entry_handler, pattern=view_ptrn))
     dp.add_handler(CallbackQueryHandler(
         callback=delete_list, pattern=list_del_ptrn))
     dp.add_handler(CallbackQueryHandler(
-        callback=set_active_list, pattern=list_act_ptrn))
+        callback=activate_list, pattern=list_act_ptrn))
     # instantiate filters
     filter_what_item = WhatItemFilter()
     filter_list_title = WhatListFilter()
     # create message handlers
-    what_item_handler = MessageHandler(filter_what_item, add_to_list)
+    what_item_handler = MessageHandler(filter_what_item, add)
     list_item_handler = MessageHandler(filter_list_title, create_list)
     # Register handlers for reply messages
     dp.add_handler(what_item_handler)
