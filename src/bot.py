@@ -12,7 +12,7 @@ The user can manage her to-do lists.
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 from peewee import IntegrityError, DoesNotExist
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, BaseFilter
-from models import resource, user, theList, resourceList, group, groupUser, db, dbConfig
+from models import resource, user, theList, resourceList, group, groupUser, db, db_config
 from datetime import datetime
 import logging
 
@@ -21,10 +21,11 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.1.4'
+VERSION = '0.1.5'
 
 # models assignments
 db = db.DB
+handle_db_connection = db_config.handle_db_connection
 User = user.User
 Group = group.Group
 List = theList.List
@@ -44,6 +45,7 @@ generic_error_msg = '❌ Oh no, an error occured, hang in there tight'
 
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
+@handle_db_connection
 def start(bot, update):
     update.message.reply_text(
         '👶🏼 Hello there, I am going to help you manage your to-do lists')
@@ -63,6 +65,7 @@ def error(error):
     logger.error(error)
 
 
+@handle_db_connection
 def add(bot, update):
     items = update.message.text.split("/add ")
     user_id = update.message.from_user.id
@@ -110,6 +113,7 @@ def version(bot, update):
     update.message.reply_text('🐚 Current bot version {}'.format(VERSION))
 
 
+@handle_db_connection
 def create_list(bot, update):
     items = update.message.text.split("/create_list ")
     user_id = update.message.from_user.id
@@ -152,6 +156,7 @@ def is_valid_input(input):
     return (len(input) >= 2 and input[1].strip())
 
 
+@handle_db_connection
 def show(bot, update):
     user_id = update.message.from_user.id
 
@@ -201,6 +206,7 @@ def show(bot, update):
         error(str(e))
 
 
+@handle_db_connection
 def remove(bot, update):
     # get data attached to callback and extract resourse id and user id
     cb_data = update.callback_query.data
@@ -270,6 +276,7 @@ def view_entry_handler(bot, update):
     bot.answer_callback_query(update.callback_query.id)
 
 
+@handle_db_connection
 def show_lists(bot, update):
     user_id = update.message.from_user.id
 
@@ -282,13 +289,13 @@ def show_lists(bot, update):
 
         if len(list(lists)):
             if update.message.text.startswith("/show_lists"):
-                reply_msg = '📚 Check out all your lists'
+                reply_msg = '📚 Check out all your lists (active ticked)'
                 cb_dt_pfx = view_ptrn
             elif update.message.text.startswith("/delete_list"):
                 reply_msg = '🗑 Throw away lists of the past'
                 cb_dt_pfx = list_del_ptrn
             elif update.message.text.startswith("/activate_list"):
-                reply_msg = '📌 Activate your list of desire'
+                reply_msg = '📌 Activate your list of choice'
                 cb_dt_pfx = list_act_ptrn
 
             keyboard_buttons = [
@@ -311,6 +318,7 @@ def show_lists(bot, update):
         error(str(e))
 
 
+@handle_db_connection
 def delete_list(bot, update):
     # get data attached to callback and extract list id and user id
     cb_data = update.callback_query.data
@@ -382,6 +390,7 @@ def delete_list(bot, update):
             error(str(e))
 
 
+@handle_db_connection
 def activate_list(bot, update):
     # get data attached to callback and extract list id and user id
     cb_data = update.callback_query.data
@@ -459,7 +468,7 @@ def toUTF8(input):
 
 def main():
     # db initialization
-    dbConfig.init_db()
+    db_config.init_db()
     # Create the EventHandler and pass it the bot's token.
     updater = Updater('${BOT_TOKEN}')
     # Get the dispatcher to register handlers
