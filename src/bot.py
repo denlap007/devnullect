@@ -9,7 +9,7 @@ To do list Bot.
 Usage:
 The user can manage her to-do lists.
 """
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply, ParseMode
 from peewee import IntegrityError, DoesNotExist
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, BaseFilter
 from models import resource, user, theList, resourceList, group, groupUser, db, db_config
@@ -35,10 +35,9 @@ GroupUser = groupUser.GroupUser
 
 # inline keyboard patterns
 entry_del_ptrn = 'e_del'
-view_ptrn = 'view'
-list_del_ptrn = 'l_del'
-list_act_ptrn = 'l_act'
-
+entry_view = 'e_view'
+list_del = 'l_del'
+list_view = 'l_view'
 # errors
 generic_error_msg = '❌ Oh no, an error occured, hang in there tight'
 
@@ -97,12 +96,12 @@ def add(bot, update):
                 rs_content=item, rs_date=datetime.utcnow())
             ResourceList.create(resource_id=resource.id,
                                 list_id=active_list.id)
-
-            update.message.reply_text('✅ OK, added {}'.format(item))
+            update.message.reply_text('✅ OK, *added* {} in _{}_'.format(item, toUTF8(active_list.title)),
+                                      parse_mode=ParseMode.MARKDOWN)
         except DoesNotExist:
             db.rollback()
             update.message.reply_text('❗ No active or available list, '
-                                      'create a list or set one as active')
+                                      'create or sctivate one')
         except Exception as e:
             db.rollback()
             update.message.reply_text(generic_error_msg)
@@ -137,15 +136,20 @@ def create_list(bot, update):
             .where((List.user_id == user_id) & (List.active == 1))
         )
 
-        if active_list.exists():
-            List.create(title=listTitle, user_id=user_id)
-        else:
-            List.create(title=listTitle, user_id=user_id, active=1)
+        # de-activate old activated list if exists
+        (List
+            .update(active=0)
+            .where((List.user_id == user_id) & (List.active == 1))
+            .execute())
+        # create new list and activate it
+        List.create(title=listTitle, user_id=user_id, active=1)
 
-        update.message.reply_text('✅ OK, created list {}'.format(listTitle))
+        update.message.reply_text('✅ OK, created and activated list _{}_'.format(listTitle),
+                                  parse_mode=ParseMode.MARKDOWN)
     except IntegrityError:
         update.message.reply_text(
-            '❗ Be careful now, list {} already exists'.format(listTitle))
+            '❗ Be careful now, list _{}_ already exists'.format(listTitle),
+            parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
@@ -178,24 +182,26 @@ def show(bot, update):
 
         if len(list(resources)):
             if update.message.text.startswith("/show"):
-                reply_msg = '🗃 Your precious items in {}'.format(
+                reply_msg = '🗃 Your items in _{}_'.format(
                     toUTF8(active_list.title))
-                cb_dt_pfx = view_ptrn
+                prefix = entry_view
             else:
-                cb_dt_pfx = entry_del_ptrn
-                reply_msg = '🗑 Time for some maintenance in {}'.format(
+                prefix = entry_del_ptrn
+                reply_msg = '🗑 Time for some maintenance in _{}_'.format(
                     toUTF8(active_list.title))
 
             keyboard_buttons = [
                 [InlineKeyboardButton(
-                    text=rs.rs_content,
-                    url=rs.rs_content if (rs.rs_content.startswith('http') or rs.rs_content.startswith(
-                        'www') or rs.rs_content.startswith('https://')) and cb_dt_pfx == view_ptrn else '',
-                    callback_data='{} {}'.format(cb_dt_pfx, rs.id)
+                    text=rs.rs_content if prefix == entry_view else '❌ {}'.format(
+                        toUTF8(rs.rs_content)),
+                    url=rs.rs_content if isUrl(
+                        rs.rs_content) and prefix == entry_view else '',
+                    callback_data='{} {}'.format(prefix, rs.id)
                 )] for rs in resources
             ]
             markup = InlineKeyboardMarkup(keyboard_buttons)
-            update.message.reply_text(reply_msg, reply_markup=markup)
+            update.message.reply_text(
+                reply_msg, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
         else:
             update.message.reply_text(
                 '😢 This is a sad reality, your list is empty')
@@ -244,7 +250,7 @@ def remove(bot, update):
             # update keyboard markup with new values and send to user
             keyboard_buttons = [
                 [InlineKeyboardButton(
-                    text=rs.rs_content,
+                    text='❌ {}'.format(toUTF8(rs.rs_content)),
                     callback_data='{} {}'.format(entry_del_ptrn, rs.id)
                 )] for rs in resources
             ]
@@ -290,21 +296,17 @@ def show_lists(bot, update):
         if len(list(lists)):
             if update.message.text.startswith("/show_lists"):
                 reply_msg = '📚 Check out all your lists (active ticked)'
-                cb_dt_pfx = view_ptrn
+                prefix = list_view
             elif update.message.text.startswith("/delete_list"):
                 reply_msg = '🗑 Throw away lists of the past'
-                cb_dt_pfx = list_del_ptrn
-            elif update.message.text.startswith("/activate_list"):
-                reply_msg = '📌 Activate your list of choice'
-                cb_dt_pfx = list_act_ptrn
+                prefix = list_del
 
             keyboard_buttons = [
                 [InlineKeyboardButton(
-                    text=ls.title,
-                    callback_data='{} {}'.format(cb_dt_pfx, ls.id)
-                )] if ls.active == 0 else [InlineKeyboardButton(
-                    text='✅  {}'.format(toUTF8(ls.title)),
-                    callback_data='{} {}'.format(cb_dt_pfx, ls.id)
+                    text='✅ {}'.format(toUTF8(ls.title)) if (prefix == list_view and ls.active == 1) else '❌ {}'.format(
+                        toUTF8(ls.title)) if prefix == list_del else ls.title,
+                    callback_data='{} {}'.format(
+                        list_view if prefix == list_view else list_del, ls.id)
                 )] for ls in lists
             ]
 
@@ -366,8 +368,8 @@ def delete_list(bot, update):
             # update keyboard markup with new values and send to user
             keyboard_buttons = [
                 [InlineKeyboardButton(
-                    text=ls.title,
-                    callback_data='{} {}'.format(list_del_ptrn, ls.id)
+                    text='❌ {}'.format(toUTF8(ls.title)),
+                    callback_data='{} {}'.format(list_del, ls.id)
                 )] for ls in lists
             ]
             markup = InlineKeyboardMarkup(keyboard_buttons)
@@ -425,10 +427,10 @@ def activate_list(bot, update):
         keyboard_buttons = [
             [InlineKeyboardButton(
                 text=ls.title,
-                callback_data='{} {}'.format(list_act_ptrn, ls.id)
+                callback_data='{} {}'.format(list_view, ls.id)
             )] if ls.active == 0 else [InlineKeyboardButton(
                 text='✅  {}'.format(toUTF8(ls.title)),
-                callback_data='{} {}'.format(list_act_ptrn, ls.id)
+                callback_data='{} {}'.format(list_view, ls.id)
             )] for ls in lists
         ]
 
@@ -466,6 +468,12 @@ def toUTF8(input):
     return input.encode('utf-8') if isinstance(input, unicode) else input
 
 
+def isUrl(input):
+    return (input.lower().startswith('http://') or
+            input.lower().startswith('https://') or
+            input.lower().startswith('www'))
+
+
 def main():
     # db initialization
     db_config.init_db()
@@ -483,16 +491,15 @@ def main():
     dp.add_handler(CommandHandler("show", show))
     dp.add_handler(CommandHandler("delete_list", show_lists))
     dp.add_handler(CommandHandler("show_lists", show_lists))
-    dp.add_handler(CommandHandler("activate_list", show_lists))
     # Register handlers for query callbacks from inline keyboard events
     dp.add_handler(CallbackQueryHandler(
         callback=remove, pattern=entry_del_ptrn))
     dp.add_handler(CallbackQueryHandler(
-        callback=view_entry_handler, pattern=view_ptrn))
+        callback=view_entry_handler, pattern=entry_view))
     dp.add_handler(CallbackQueryHandler(
-        callback=delete_list, pattern=list_del_ptrn))
+        callback=delete_list, pattern=list_del))
     dp.add_handler(CallbackQueryHandler(
-        callback=activate_list, pattern=list_act_ptrn))
+        callback=activate_list, pattern=list_view))
     # instantiate filters
     filter_what_item = WhatItemFilter()
     filter_list_title = WhatListFilter()
