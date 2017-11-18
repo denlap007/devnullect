@@ -6,6 +6,8 @@ from user import User
 from theList import List
 from resourceList import ResourceList
 from resource import Resource
+from group import Group
+from groupUser import GroupUser
 from db import DB, DB_NAME
 
 # Enable logging
@@ -24,7 +26,7 @@ def init_db():
             # perform db -vendor dependant operations if necessary
             prepareTables()
             # create db tables if they do not exist
-            DB.create_tables([User, List, ResourceList, Resource], safe=True)
+            DB.create_tables([User, List, ResourceList, Resource, Group, GroupUser], safe=True)
             # close connection
             DB.close()
             break

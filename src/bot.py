@@ -9,11 +9,12 @@ To do list Bot.
 Usage:
 The user can manage her to-do lists.
 """
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply, ParseMode
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 from peewee import IntegrityError, DoesNotExist
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, BaseFilter
 from models import resource, user, theList, resourceList, group, groupUser, db, db_config
 from datetime import datetime
+from functools import wraps
 import logging
 
 # Enable logging
@@ -21,7 +22,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.1.5'
+VERSION = '0.2.0'
 
 # models assignments
 db = db.DB
@@ -42,22 +43,65 @@ list_view = 'l_view'
 generic_error_msg = '❌ Oh no, an error occured, hang in there tight'
 
 
+def handle_group_call(func):
+    @wraps(func)
+    def wrapper(bot, update, *args, **kwargs):
+        if update.message.chat.type == 'group':
+            update.message.reply_text('❗ Not available in groups!')
+        elif update.message.chat.type == 'private':
+            func(bot, update, *args, **kwargs)
+    return wrapper
+
+
+def handle_user_membership(func):
+    @wraps(func)
+    def wrapper(bot, update, *args, **kwargs):
+        user_id = update.message.from_user.id
+
+        if update.message.chat.type == 'group':
+            try:
+                (GroupUser
+                    .select()
+                    .where(GroupUser.user_id == user_id)
+                    .get())
+
+                func(bot, update, *args, **kwargs)
+            except DoesNotExist:
+                update.message.reply_text(
+                    '❗ Not member of the group list. Please join')
+            except Exception as e:
+                update.message.reply_text(generic_error_msg)
+                error(str(e))
+        elif update.message.chat.type == 'private':
+            func(bot, update, *args, **kwargs)
+    return wrapper
+
+
+def handle_user_call(func):
+    @wraps(func)
+    def wrapper(bot, update, *args, **kwargs):
+        if update.message.chat.type == 'private':
+            update.message.reply_text('❗ Only available in groups!')
+        elif update.message.chat.type == 'group':
+            func(bot, update, *args, **kwargs)
+    return wrapper
+
+
 # Define a few command handlers. These usually take the two arguments bot and
 # update. Error handlers also receive the raised TelegramError object in error.
+@handle_group_call
 @handle_db_connection
 def start(bot, update):
     update.message.reply_text(
         '👶🏼 Hello there, I am going to help you manage your to-do lists')
     user_id = update.message.from_user.id
-    User.get_or_create(id=user_id)
+    f_name = update.message.from_user.first_name
+    l_name = update.message.from_user.last_name
+    User.get_or_create(id=user_id, f_name=f_name, l_name=l_name)
 
 
 def help(bot, update):
     update.message.reply_text('👶🏼 All stuff is pretty straightforward!')
-
-
-def echo(bot, update):
-    update.message.reply_text(update.message.text)
 
 
 def error(error):
@@ -65,10 +109,11 @@ def error(error):
 
 
 @handle_db_connection
+@handle_user_membership
 def add(bot, update):
     items = update.message.text.split("/add ")
     user_id = update.message.from_user.id
-
+    chat_type = update.message.chat.type
     if (is_valid_input(items)):
         item = toUTF8(' '.join(items[1:]))
     elif update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
@@ -85,23 +130,54 @@ def add(bot, update):
     with db.atomic() as trx:
         try:
             # find active user list if any
-            active_list = (
-                List
-                .select()
-                .where((List.user_id == user_id) & (List.active == 1))
-                .get()
-            )
-            # item = item.encode('utf-8') if isinstance(item, unicode) else item
-            resource = Resource.create(
-                rs_content=item, rs_date=datetime.utcnow())
-            ResourceList.create(resource_id=resource.id,
-                                list_id=active_list.id)
-            update.message.reply_text('✅ OK, *added* {} in _{}_'.format(item, toUTF8(active_list.title)),
-                                      parse_mode=ParseMode.MARKDOWN)
+            if chat_type == 'private':
+                active_list = (
+                    List
+                    .select()
+                    .where((List.user_id == user_id) & (List.active == 1))
+                    .get()
+                )
+                # from private chat a user can only add to her lists
+                if active_list.group == 1:
+                    update.message.reply_text('❗ Cannot add to the group list {} from a private chat'.format(
+                        toUTF8(active_list.title)))
+                else:
+                    resource = Resource.create(
+                        rs_content=item, rs_date=datetime.utcnow())
+                    ResourceList.create(resource_id=resource.id,
+                                        list_id=active_list.id)
+                    update.message.reply_text('✅ OK, added  {}  in  {}'.format(
+                        item, toUTF8(active_list.title)))
+            elif chat_type == 'group':
+                group_name = update.message.chat.title
+                group_id = update.message.chat.id
+                user_id = update.message.from_user.id
+                user_f_name = update.message.from_user.first_name
+                # get the lists of all users in group
+                lists = (
+                    List
+                    .select()
+                    .join(User, on=User.id == List.user_id)
+                    .where((List.group == 1) & (List.title == group_name))
+                )
+                # create resource
+                resource = Resource.create(
+                    rs_content=item, rs_date=datetime.utcnow())
+                # add to every user's list
+                for list in lists:
+                    if list.user_id.id != user_id:
+                        ResourceList.create(resource_id=resource.id,
+                                            list_id=list.id)
+
+                bot.send_message(
+                    chat_id=group_id,
+                    text='✅ OK, {} added  {}  in  {}  list'.format(
+                        toUTF8(user_f_name), item, toUTF8(group_name))
+                )
         except DoesNotExist:
             db.rollback()
             update.message.reply_text('❗ No active or available list, '
-                                      'create or sctivate one')
+                                      'create or activate one')
         except Exception as e:
             db.rollback()
             update.message.reply_text(generic_error_msg)
@@ -112,6 +188,7 @@ def version(bot, update):
     update.message.reply_text('🐚 Current bot version {}'.format(VERSION))
 
 
+@handle_group_call
 @handle_db_connection
 def create_list(bot, update):
     items = update.message.text.split("/create_list ")
@@ -144,12 +221,11 @@ def create_list(bot, update):
         # create new list and activate it
         List.create(title=listTitle, user_id=user_id, active=1)
 
-        update.message.reply_text('✅ OK, created and activated list _{}_'.format(listTitle),
-                                  parse_mode=ParseMode.MARKDOWN)
+        update.message.reply_text(
+            '✅ OK, created and activated list  {}'.format(listTitle))
     except IntegrityError:
         update.message.reply_text(
-            '❗ Be careful now, list _{}_ already exists'.format(listTitle),
-            parse_mode=ParseMode.MARKDOWN)
+            '❗ Be careful now, list  {}  already exists'.format(listTitle))
     except Exception as e:
         update.message.reply_text(generic_error_msg)
         error(str(e))
@@ -160,6 +236,7 @@ def is_valid_input(input):
     return (len(input) >= 2 and input[1].strip())
 
 
+@handle_group_call
 @handle_db_connection
 def show(bot, update):
     user_id = update.message.from_user.id
@@ -182,12 +259,12 @@ def show(bot, update):
 
         if len(list(resources)):
             if update.message.text.startswith("/show"):
-                reply_msg = '🗃 Your items in _{}_'.format(
+                reply_msg = '🗃 Your items in  {}'.format(
                     toUTF8(active_list.title))
                 prefix = entry_view
             else:
                 prefix = entry_del_ptrn
-                reply_msg = '🗑 Time for some maintenance in _{}_'.format(
+                reply_msg = '🗑 Time for some maintenance in  {}'.format(
                     toUTF8(active_list.title))
 
             keyboard_buttons = [
@@ -201,7 +278,7 @@ def show(bot, update):
             ]
             markup = InlineKeyboardMarkup(keyboard_buttons)
             update.message.reply_text(
-                reply_msg, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+                reply_msg, reply_markup=markup)
         else:
             update.message.reply_text(
                 '😢 This is a sad reality, your list is empty')
@@ -282,6 +359,7 @@ def view_entry_handler(bot, update):
     bot.answer_callback_query(update.callback_query.id)
 
 
+@handle_group_call
 @handle_db_connection
 def show_lists(bot, update):
     user_id = update.message.from_user.id
@@ -301,14 +379,21 @@ def show_lists(bot, update):
                 reply_msg = '🗑 Throw away lists of the past'
                 prefix = list_del
 
-            keyboard_buttons = [
-                [InlineKeyboardButton(
-                    text='✅ {}'.format(toUTF8(ls.title)) if (prefix == list_view and ls.active == 1) else '❌ {}'.format(
-                        toUTF8(ls.title)) if prefix == list_del else ls.title,
-                    callback_data='{} {}'.format(
-                        list_view if prefix == list_view else list_del, ls.id)
-                )] for ls in lists
-            ]
+            def generate_keyboard_button(list, prefix):
+                group_icon = '👫' if list.group == 1 else ''
+                tick_icon = '✅' if (
+                    prefix == list_view and list.active == 1) else ''
+                del_icon = '❌'
+                item_icon = del_icon if prefix == list_del else tick_icon
+
+                callback_data = '{} {} {}'.format(
+                    list_view if prefix == list_view else list_del, list.id, list.group)
+
+                return [InlineKeyboardButton(text='{} {} {}'.format(item_icon, toUTF8(list.title), group_icon),
+                                             callback_data=callback_data)]
+
+            keyboard_buttons = [generate_keyboard_button(
+                ls, prefix) for ls in lists]
 
             markup = InlineKeyboardMarkup(keyboard_buttons)
             update.message.reply_text(reply_msg, reply_markup=markup)
@@ -325,7 +410,9 @@ def delete_list(bot, update):
     # get data attached to callback and extract list id and user id
     cb_data = update.callback_query.data
     list_id = cb_data.split()[1]
+    list_group = cb_data.split()[2]
     user_id = update.callback_query.from_user.id
+    chat_type = update.callback_query.message.chat.type
 
     # start db transaction
     with db.atomic() as trx:
@@ -365,11 +452,21 @@ def delete_list(bot, update):
                 .where(List.user_id == user_id)
             )
 
+            # if you delete a group list remove user from group
+            if list_group == 'True':
+                query = (
+                    GroupUser
+                    .delete()
+                    .where(GroupUser.user_id == user_id)
+                    .execute()
+                )
+
             # update keyboard markup with new values and send to user
             keyboard_buttons = [
                 [InlineKeyboardButton(
-                    text='❌ {}'.format(toUTF8(ls.title)),
-                    callback_data='{} {}'.format(list_del, ls.id)
+                    text='❌ {} {}'.format(
+                        toUTF8(ls.title), '👫' if ls.group == 1 else ''),
+                    callback_data='{} {} {}'.format(list_del, ls.id, ls.group)
                 )] for ls in lists
             ]
             markup = InlineKeyboardMarkup(keyboard_buttons)
@@ -423,16 +520,17 @@ def activate_list(bot, update):
             text='✅ OK, activated list {}'.format(
                 toUTF8([ls.title for ls in lists if ls.active == 1][0]))
         )
+
         # update reply_markup
-        keyboard_buttons = [
-            [InlineKeyboardButton(
-                text=ls.title,
-                callback_data='{} {}'.format(list_view, ls.id)
-            )] if ls.active == 0 else [InlineKeyboardButton(
-                text='✅  {}'.format(toUTF8(ls.title)),
-                callback_data='{} {}'.format(list_view, ls.id)
-            )] for ls in lists
-        ]
+        def generate_keyboard_button(list):
+            group_icon = '👫' if list.group == 1 else ''
+            tick_icon = '✅' if list.active == 1 else ''
+            callback_data = '{} {} {}'.format(list_view, list.id, list.group)
+
+            return [InlineKeyboardButton(text='{} {} {}'.format(tick_icon, toUTF8(list.title), group_icon),
+                                         callback_data=callback_data)]
+
+        keyboard_buttons = [generate_keyboard_button(ls) for ls in lists]
 
         markup = InlineKeyboardMarkup(keyboard_buttons)
         bot.edit_message_reply_markup(
@@ -446,6 +544,57 @@ def activate_list(bot, update):
             text=generic_error_msg
         )
         error(str(e))
+
+
+@handle_db_connection
+def create_group(bot, update):
+    group_id = update.message.chat.id
+    group_name = update.message.chat.title
+    try:
+        Group.get_or_create(id=group_id, g_name=group_name)
+    except Exception as e:
+        bot.send_message(
+            chat_id=update.message.chat.id,
+            text='❌ Bot initialization for group failed. Remove and add again',
+            reply_to_message_id=update.message.message_id)
+        error(str(e))
+
+
+@handle_user_call
+@handle_db_connection
+def join_group_list(bot, update):
+    user_id = update.message.from_user.id
+    group_id = update.message.chat.id
+    f_name = update.message.from_user.first_name
+    l_name = update.message.from_user.last_name
+    group_name = update.message.chat.title
+
+    # start db transaction
+    with db.atomic() as trx:
+        try:
+            # register user if necessary
+            User.get_or_create(id=user_id, f_name=f_name, l_name=l_name)
+            #  FOR TEST Only
+            # Group.get_or_create(id=group_id, g_name=group_name)
+            # create group-user record
+            GroupUser.get_or_create(user_id=user_id,
+                                    group_id=group_id)
+            # create group list for user
+            List.get_or_create(
+                title=group_name, user_id=user_id, active=0, group=1)
+
+            bot.send_message(
+                chat_id=group_id,
+                text='✅ OK, {} you joined the shared list of  {}  group'.format(
+                    toUTF8(f_name), toUTF8(group_name))
+            )
+        except Exception as e:
+            db.rollback()
+            bot.send_message(
+                chat_id=group_id,
+                text=generic_error_msg
+            )
+            error(str(e))
 
 
 class WhatItemFilter(BaseFilter):
@@ -462,6 +611,11 @@ class WhatListFilter(BaseFilter):
                 'List title?' in message.reply_to_message.text and
                 message.reply_to_message.from_user.is_bot and
                 message.message_id == message.reply_to_message.message_id + 1)
+
+
+class AddedToGroupFilter(BaseFilter):
+    def filter(self, message):
+        return message.new_chat_members and any(user.is_bot and user.username == 'xperiment_bot' for user in message.new_chat_members)
 
 
 def toUTF8(input):
@@ -491,6 +645,7 @@ def main():
     dp.add_handler(CommandHandler("show", show))
     dp.add_handler(CommandHandler("delete_list", show_lists))
     dp.add_handler(CommandHandler("show_lists", show_lists))
+    dp.add_handler(CommandHandler("join_group_list", join_group_list))
     # Register handlers for query callbacks from inline keyboard events
     dp.add_handler(CallbackQueryHandler(
         callback=remove, pattern=entry_del_ptrn))
@@ -503,12 +658,15 @@ def main():
     # instantiate filters
     filter_what_item = WhatItemFilter()
     filter_list_title = WhatListFilter()
+    filter_add_to_group = AddedToGroupFilter()
     # create message handlers
     what_item_handler = MessageHandler(filter_what_item, add)
     list_item_handler = MessageHandler(filter_list_title, create_list)
+    add_to_group_handler = MessageHandler(filter_add_to_group, create_group)
     # Register handlers for reply messages
     dp.add_handler(what_item_handler)
     dp.add_handler(list_item_handler)
+    dp.add_handler(add_to_group_handler)
     # log all errors
     dp.add_error_handler(error)
     # Start the Bot

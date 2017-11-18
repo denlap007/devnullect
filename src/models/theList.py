@@ -7,6 +7,7 @@ class List(MyBaseModel):
     id = PrimaryKeyField(db_column="id")
     title = CharField(50)
     active = BooleanField(default=False)
+    group = BooleanField(default=False)
     user_id = ForeignKeyField(
         User, db_column='user_id', related_name='users', to_field='id')
 
