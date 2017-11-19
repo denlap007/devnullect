@@ -53,7 +53,9 @@ def start(bot, update):
 
 
 def help(bot, update):
-    update.message.reply_text('👶🏼 All stuff is pretty straightforward!')
+    help_msg = "At first create a new list with /create_new_list command." +\
+        "Then, you add/remove items etc."
+    update.message.reply_text(help_msg)
 
 
 def echo(bot, update):
