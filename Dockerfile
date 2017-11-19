@@ -7,8 +7,6 @@ ENV BUILD_DEPS="gettext"  \
 
 COPY . .
 ENV SRC_DIR /src
-ENV DB_PATH ${SRC_DIR}/db
-ENV SQLITE_DB ${DB_PATH}/todo.sqlite
 
 RUN set -ex \
   && pip install --no-cache-dir -r requirements.txt \

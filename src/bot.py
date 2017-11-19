@@ -22,7 +22,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.2.0'
+VERSION = '0.2.3'
 
 # models assignments
 db = db.DB
@@ -430,50 +430,48 @@ def delete_list(bot, update):
     # start db transaction
     with db.atomic() as trx:
         try:
-            # get all resources associated with list to delete
-            resources_in_list = (
-                ResourceList
-                .select()
-                .where(ResourceList.list_id == list_id)
-            )
+            if list_group == 'True':
+                # if you delete a group list remove user from group
+                (GroupUser
+                    .delete()
+                    .where(GroupUser.user_id == user_id)
+                    .execute())
+                # if no user from the group holds this resource get it to delete it
+                raw_query = 'SELECT resource_list.resource_id FROM resource_list WHERE resource_list.list_id = {0} AND resource_list.resource_id  NOT IN (SELECT resource_list.resource_id FROM resource_list WHERE resource_list.list_id != {0})'.format(
+                    list_id)
+
+                resources_in_list = ResourceList.raw(raw_query)
+            else:
+                # get all resources associated with list to delete
+                resources_in_list = (
+                    ResourceList
+                    .select()
+                    .where(ResourceList.list_id == list_id)
+                )
 
             rs_list_ids = []
-
             for rs_list in resources_in_list:
                 rs_list_ids.append(rs_list.resource_id.id)
 
-            # # delete entries from associative table
+            # delete entries from associative table
             (ResourceList
                 .delete()
                 .where(ResourceList.list_id == list_id)
                 .execute())
-
-            #  delete resources
+            # # delete resources
             (Resource
                 .delete()
                 .where(Resource.id << rs_list_ids)
                 .execute())
-
             # delete list entry
             the_list = List.get(id=list_id)
             the_list.delete_instance()
-
             # retrieve lists
             lists = (
                 List
                 .select()
                 .where(List.user_id == user_id)
             )
-
-            # if you delete a group list remove user from group
-            if list_group == 'True':
-                query = (
-                    GroupUser
-                    .delete()
-                    .where(GroupUser.user_id == user_id)
-                    .execute()
-                )
-
             # update keyboard markup with new values and send to user
             keyboard_buttons = [
                 [InlineKeyboardButton(
@@ -551,12 +549,11 @@ def activate_list(bot, update):
             message_id=update.callback_query.message.message_id,
             reply_markup=markup)
     except Exception as e:
-        bot.answer_callback_query(
-            callback_query_id=update.callback_query.id,
-            show_alert=True,
-            text=generic_error_msg
-        )
-        error(str(e))
+        if e.message != 'Message is not modified':
+            bot.send_message_reply_markup(
+                chat_id=update.callback_query.message.chat_id,
+                text=generic_error_msg)
+            error(str(e))
 
 
 @handle_db_connection
