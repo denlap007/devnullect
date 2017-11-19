@@ -97,7 +97,15 @@ def start(bot, update):
     user_id = update.message.from_user.id
     f_name = update.message.from_user.first_name
     l_name = update.message.from_user.last_name
-    User.get_or_create(id=user_id, f_name=f_name, l_name=l_name)
+    try:
+        User.get_or_create(
+            id=user_id, f_name=f_name if not None else '', l_name=l_name if not None else '')
+    except Exception as e:
+        bot.send_message(
+            chat_id=user_id,
+            text=generic_error_msg
+        )
+        error(str(e))
 
 
 def help(bot, update):
@@ -164,16 +172,22 @@ def add(bot, update):
                 resource = Resource.create(
                     rs_content=item, rs_date=datetime.utcnow())
                 # add to every user's list
-                for list in lists:
-                    if list.user_id.id != user_id:
-                        ResourceList.create(resource_id=resource.id,
-                                            list_id=list.id)
+                if len(list(lists)) != 0:
+                    for ls in lists:
+                        if ls.user_id.id != user_id:
+                            ResourceList.create(resource_id=resource.id,
+                                                list_id=ls.id)
 
-                bot.send_message(
-                    chat_id=group_id,
-                    text='✅ OK, {} added  {}  in  {}  list'.format(
-                        toUTF8(user_f_name), item, toUTF8(group_name))
-                )
+                    bot.send_message(
+                        chat_id=group_id,
+                        text='✅ OK, {} added  {}  in  {}  list'.format(
+                            toUTF8(user_f_name), item, toUTF8(group_name))
+                    )
+                else:
+                    bot.send_message(
+                        chat_id=group_id,
+                        text='❗ At least two members of the group must join the list in order to add items.'
+                    )
         except DoesNotExist:
             db.rollback()
             update.message.reply_text('❗ No active or available list, '
@@ -412,7 +426,6 @@ def delete_list(bot, update):
     list_id = cb_data.split()[1]
     list_group = cb_data.split()[2]
     user_id = update.callback_query.from_user.id
-    chat_type = update.callback_query.message.chat.type
 
     # start db transaction
     with db.atomic() as trx:
