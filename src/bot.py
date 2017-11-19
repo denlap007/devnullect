@@ -615,7 +615,7 @@ class WhatListFilter(BaseFilter):
 
 class AddedToGroupFilter(BaseFilter):
     def filter(self, message):
-        return message.new_chat_members and any(user.is_bot and user.username == 'xperiment_bot' for user in message.new_chat_members)
+        return message.new_chat_members and any(user.is_bot and user.username == '${BOT_NAME}' for user in message.new_chat_members)
 
 
 def toUTF8(input):
