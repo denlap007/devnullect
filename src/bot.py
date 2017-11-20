@@ -26,7 +26,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.2.3'
+VERSION = '0.2.5'
 
 # models assignments
 db = db.DB
