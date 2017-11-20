@@ -1,10 +1,13 @@
 from peewee import MySQLDatabase
+from ConfigParser import SafeConfigParser
 
-DB_NAME = '${DB_NAME}'
-DB_HOST = '${DB_HOST}'
-DB_USER = '${DB_USER}'
-DB_PASS = '${DB_PASS}'
-DB_PORT = ${DB_PORT}
+conf = SafeConfigParser()
+conf.read('conf.ini')
 
-DB = MySQLDatabase(DB_NAME, host=DB_HOST, user=DB_USER, password=DB_PASS,
-                   port=DB_PORT, use_unicode=True, charset='utf8')
+DB = MySQLDatabase(conf.get('db', 'DB_NAME'),
+                   host=conf.get('db', 'DB_HOST'),
+                   user=conf.get('db', 'DB_USER'),
+                   password=conf.get('db', 'DB_PASS'),
+                   port=conf.getint('db', 'DB_PORT'),
+                   use_unicode=True,
+                   charset='utf8')

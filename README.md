@@ -1,19 +1,21 @@
 # devnullect
-Repo for devnullect telegram bot
+Repo for telegram bot that manages to-do lists with group support.
 
-## How to run the bot dockerized in one command
+## How to run the bot
+The bot is configured to run **dockerized in a container**. Current setup includes a **MySQL** database container, a **phpMyAdmin** container for database manipulation and the **bot app** container.
 
+You will **require installed**:
+* docker v1.13.0+
+* docker-compose v1.10.0+
+
+In the _compose_ directory, the **.env file** contains the configuration information necessary. The variables are self-descriptive and all their values are mandatory for the app to execute.
+
+In order to start the application, from the _**compose** directory_ run:
 ```shell
-docker run -d --name devnullect-bot -v </host/path>:/src/db -e BOT_TOKEN=<YOUR__BOT_TOKEN> denlap/devnullect
+docker-compose up -d
 ```
-where
-* </host/path> is a path to your host to persist data if you remove the container, i.e. /home/db
-* <YOUR__BOT_TOKEN> is the BOT_TOKEN you were given when created the bot
-
 
 #### To Do
-* Add group support
-* Update documentation for deployment (old docker method legacy)
 * Update wiki
 * add urls with nothing as prefix
 * create profile pic :)

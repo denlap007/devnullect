@@ -16,6 +16,10 @@ from models import resource, user, theList, resourceList, group, groupUser, db, 
 from datetime import datetime
 from functools import wraps
 import logging
+from ConfigParser import SafeConfigParser
+
+conf = SafeConfigParser()
+conf.read('conf.ini')
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -625,7 +629,7 @@ class WhatListFilter(BaseFilter):
 
 class AddedToGroupFilter(BaseFilter):
     def filter(self, message):
-        return message.new_chat_members and any(user.is_bot and user.username == '${BOT_NAME}' for user in message.new_chat_members)
+        return message.new_chat_members and any(user.is_bot and user.username == conf.get('bot', 'BOT_NAME') for user in message.new_chat_members)
 
 
 def toUTF8(input):
@@ -642,7 +646,7 @@ def main():
     # db initialization
     db_config.init_db()
     # Create the EventHandler and pass it the bot's token.
-    updater = Updater('${BOT_TOKEN}')
+    updater = Updater(conf.get('bot', 'BOT_TOKEN'))
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
     # on different commands - answer in Telegram

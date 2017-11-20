@@ -1,0 +1,45 @@
+version: '3'
+
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: mysql
+    volumes:
+      - devnullect_db_data:/var/lib/mysql
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASS}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASS}
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    environment:
+      - PMA_ARBITRARY=1
+      - PMA_HOST=mysql
+      - PMA_PORT=${DB_PORT}
+    restart: always
+    depends_on:
+      - mysql
+    ports:
+      - "8080:80"
+    volumes:
+      - /sessions
+
+  devnullect-bot-2:
+    image: denlap/devnullect:group-support
+    container_name: devnullect-bot-2
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=mysql
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_PORT=${DB_PORT}
+    depends_on:
+      - mysql
+
+volumes:
+    devnullect_db_data:
