@@ -9,6 +9,7 @@ To do list Bot.
 Usage:
 The user can manage her to-do lists.
 """
+import os.path
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 from peewee import IntegrityError, DoesNotExist
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, BaseFilter
@@ -18,15 +19,17 @@ from functools import wraps
 import logging
 from ConfigParser import SafeConfigParser
 
-conf = SafeConfigParser()
-conf.read('conf.ini')
+parser = SafeConfigParser()
+cur_dir = os.path.abspath(os.path.dirname(__file__))
+conf_path = os.path.join(cur_dir, './conf.ini')
+parser.read(conf_path)
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-VERSION = '0.2.5'
+VERSION = '0.2.6'
 
 # models assignments
 db = db.DB
@@ -646,7 +649,7 @@ def main():
     # db initialization
     db_config.init_db()
     # Create the EventHandler and pass it the bot's token.
-    updater = Updater(conf.get('bot', 'BOT_TOKEN'))
+    updater = Updater(parser.get('bot', 'BOT_TOKEN'))
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
     # on different commands - answer in Telegram
