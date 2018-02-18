@@ -2,7 +2,7 @@ from peewee import MySQLDatabase
 from ConfigParser import SafeConfigParser
 
 conf = SafeConfigParser()
-conf.read('conf.ini')
+conf.read('../conf.ini')
 
 DB = MySQLDatabase(conf.get('db', 'DB_NAME'),
                    host=conf.get('db', 'DB_HOST'),
